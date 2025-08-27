@@ -114,8 +114,17 @@ if page == "Data Loading & Preprocessing":
             
             # Class distribution
             if 'readmitted' in data.columns:
-                readmission_rate = data['readmitted'].mean()
-                st.metric("Readmission Rate", f"{readmission_rate:.1%}")
+                try:
+                    # Try to convert to numeric first
+                    readmitted_col = data['readmitted'].copy()
+                    if readmitted_col.dtype == 'object':
+                        # Handle string values
+                        readmitted_col = readmitted_col.astype(str).str.lower().str.strip()
+                        readmitted_col = readmitted_col.apply(lambda x: 1 if 'yes' in x else 0)
+                    readmission_rate = readmitted_col.mean()
+                    st.metric("Readmission Rate", f"{readmission_rate:.1%}")
+                except Exception as e:
+                    st.metric("Readmission Rate", "Unable to calculate")
     
     # Data preprocessing section
     if st.session_state.data_loaded:
