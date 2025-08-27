@@ -48,7 +48,8 @@ class DataProcessor:
         X_test_scaled = self._scale_features(X_test, fit=False)
         
         # Convert to DataFrame with proper column names
-        self.feature_names = list(X.columns)
+        # Clean feature names to remove special characters that XGBoost doesn't like
+        self.feature_names = [self._clean_feature_name(col) for col in X.columns]
         X_train_scaled = pd.DataFrame(X_train_scaled, columns=self.feature_names, index=X_train.index)
         X_test_scaled = pd.DataFrame(X_test_scaled, columns=self.feature_names, index=X_test.index)
         
@@ -263,3 +264,16 @@ class DataProcessor:
         X_scaled = X_scaled.astype('float64')
         
         return X_scaled.values
+    
+    def _clean_feature_name(self, name):
+        """Clean feature names to remove characters that XGBoost doesn't like"""
+        import re
+        # Replace brackets, angle brackets, and other special characters
+        cleaned = re.sub(r'[\[\]<>]', '_', str(name))
+        # Replace other problematic characters
+        cleaned = re.sub(r'[(),\-\s]', '_', cleaned)
+        # Remove multiple underscores
+        cleaned = re.sub(r'_+', '_', cleaned)
+        # Remove leading/trailing underscores
+        cleaned = cleaned.strip('_')
+        return cleaned
