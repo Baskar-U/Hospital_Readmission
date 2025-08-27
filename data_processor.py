@@ -236,12 +236,30 @@ class DataProcessor:
     
     def _scale_features(self, X, fit=False):
         """Scale numerical features"""
-        numerical_cols = X.select_dtypes(include=[np.number]).columns
         X_scaled = X.copy()
         
-        if fit:
-            X_scaled[numerical_cols] = self.scaler.fit_transform(X[numerical_cols])
-        else:
-            X_scaled[numerical_cols] = self.scaler.transform(X[numerical_cols])
+        # Convert all columns to numeric first
+        for col in X_scaled.columns:
+            if X_scaled[col].dtype == 'object':
+                # Try to convert to numeric
+                try:
+                    X_scaled[col] = pd.to_numeric(X_scaled[col], errors='coerce')
+                    # Fill any NaN values that resulted from conversion
+                    X_scaled[col] = X_scaled[col].fillna(0)
+                except:
+                    # If conversion fails, treat as categorical (already encoded)
+                    X_scaled[col] = X_scaled[col].astype('category').cat.codes
+        
+        # Ensure all columns are numeric
+        numerical_cols = X_scaled.select_dtypes(include=[np.number]).columns
+        
+        if len(numerical_cols) > 0:
+            if fit:
+                X_scaled[numerical_cols] = self.scaler.fit_transform(X_scaled[numerical_cols])
+            else:
+                X_scaled[numerical_cols] = self.scaler.transform(X_scaled[numerical_cols])
+        
+        # Convert to float64 to ensure compatibility
+        X_scaled = X_scaled.astype('float64')
         
         return X_scaled.values
