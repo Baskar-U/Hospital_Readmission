@@ -78,18 +78,41 @@ class DataProcessor:
         
         # Handle different target variable formats
         if target.dtype == 'object':
-            # String values like 'YES'/'NO', '>30'/'<30', etc.
+            # Convert to string and clean up
+            target = target.astype(str).str.lower().str.strip()
+            
+            # Handle case where values might be concatenated (like 'yesnonoyesyes...')
+            # First check if we have simple binary values
             unique_vals = target.unique()
-            if len(unique_vals) == 2:
-                # Binary encoding
-                positive_indicators = ['yes', 'true', '1', '>30', 'readmitted']
-                target = target.astype(str).str.lower()
-                target = target.apply(lambda x: 1 if any(indicator in x for indicator in positive_indicators) else 0)
+            
+            # Check for simple binary cases first
+            simple_binary_patterns = {
+                'yes': 1, 'no': 0, 'true': 1, 'false': 0, 
+                '1': 1, '0': 0, '>30': 1, '<30': 0, 'readmitted': 1, 'not_readmitted': 0
+            }
+            
+            # If all values are simple binary patterns, use direct mapping
+            if all(val in simple_binary_patterns for val in unique_vals):
+                target = target.map(simple_binary_patterns)
             else:
-                # Multi-class to binary (readmission vs no readmission)
-                no_readmission_indicators = ['no', '<30', 'not_readmitted', '0']
-                target = target.astype(str).str.lower()
-                target = target.apply(lambda x: 0 if any(indicator in x for indicator in no_readmission_indicators) else 1)
+                # Handle more complex cases or concatenated strings
+                def classify_target(x):
+                    x = str(x).lower().strip()
+                    
+                    # Handle concatenated yes/no strings by counting occurrences
+                    if 'yes' in x and 'no' in x:
+                        yes_count = x.count('yes')
+                        no_count = x.count('no')
+                        return 1 if yes_count > no_count else 0
+                    elif 'yes' in x or 'true' in x or '>30' in x or 'readmitted' in x:
+                        return 1
+                    elif 'no' in x or 'false' in x or '<30' in x or 'not_readmitted' in x:
+                        return 0
+                    else:
+                        # Default to 0 for unknown patterns
+                        return 0
+                
+                target = target.apply(classify_target)
         
         return target.astype(int)
     
