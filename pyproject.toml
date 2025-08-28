@@ -12,6 +12,7 @@ dependencies = [
     "plotly",
     "scikit-learn",
     "seaborn",
+    "shap",
     "streamlit>=1.49.0",
     "xgboost",
 ]

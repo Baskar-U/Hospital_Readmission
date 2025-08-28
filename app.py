@@ -15,7 +15,22 @@ except ImportError:
     shap = None
 import os
 import warnings
+import requests
+from datetime import datetime
 warnings.filterwarnings('ignore')
+
+# Health check endpoint
+def health_check():
+    """Simple health check function"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "app": "Hospital Readmission Risk Prediction"
+    }
+
+# Add health check to session state
+if 'health_status' not in st.session_state:
+    st.session_state.health_status = health_check()
 
 from data_processor import DataProcessor
 from model_trainer import ModelTrainer
