@@ -17,16 +17,10 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
-# Import modules with error handling
-try:
-    from data_processor import DataProcessor
-    from model_trainer import ModelTrainer
-    from explainer import ModelExplainer
-    from utils import load_kaggle_dataset, validate_performance_targets
-    MODULES_LOADED = True
-except ImportError as e:
-    st.error(f"Error loading modules: {e}")
-    MODULES_LOADED = False
+from data_processor import DataProcessor
+from model_trainer import ModelTrainer
+from explainer import ModelExplainer
+from utils import load_kaggle_dataset, validate_performance_targets
 
 # Page configuration
 st.set_page_config(
@@ -50,26 +44,6 @@ if 'models_trained' not in st.session_state:
     st.session_state.models_trained = False
 if 'explainer_ready' not in st.session_state:
     st.session_state.explainer_ready = False
-
-# Check if modules are loaded
-if not MODULES_LOADED:
-    st.error("""
-    ⚠️ **Deployment Issue Detected**
-    
-    Some required modules could not be loaded. This might be due to:
-    - Missing dependencies
-    - Import errors in custom modules
-    
-    **Troubleshooting:**
-    1. Check that all required packages are in `requirements.txt`
-    2. Verify that all Python files are properly formatted
-    3. Ensure no syntax errors in custom modules
-    
-    **For deployment:**
-    - Make sure all files are committed to your repository
-    - Check the deployment logs for specific error messages
-    """)
-    st.stop()
 
 # Sidebar for navigation
 st.sidebar.title("Navigation")
@@ -95,67 +69,21 @@ if page == "Data Loading & Preprocessing":
         **Features**: Demographics, comorbidities, prior admissions, length of stay, discharge details
         """)
         
-        # Check if data file exists locally
-        data_file_path = "data/hospital_readmissions.csv"
-        if os.path.exists(data_file_path):
-            st.success("✅ Local data file found!")
-            if st.button("Load Local Dataset"):
-                with st.spinner("Loading local dataset..."):
+        # Kaggle API key input
+        st.subheader("Kaggle API Configuration")
+        kaggle_username = st.text_input("Kaggle Username", value=os.getenv("KAGGLE_USERNAME", ""))
+        kaggle_key = st.text_input("Kaggle API Key", value=os.getenv("KAGGLE_KEY", ""), type="password")
+        
+        if st.button("Load Dataset"):
+            if kaggle_username and kaggle_key:
+                with st.spinner("Loading dataset from Kaggle..."):
                     try:
-                        data = pd.read_csv(data_file_path)
-                        if data is not None and not data.empty:
-                            # Initialize data processor
-                            processor = DataProcessor()
-                            
-                            # Store in session state
-                            st.session_state.raw_data = data
-                            st.session_state.processor = processor
-                            st.session_state.data_loaded = True
-                            
-                            st.success(f"Dataset loaded successfully! Shape: {data.shape}")
-                            st.rerun()
-                        else:
-                            st.error("Local data file is empty or invalid.")
-                    except Exception as e:
-                        st.error(f"Error loading local data: {e}")
-        else:
-            st.warning("⚠️ No local data file found. You can:")
-            
-            # Option 1: Upload file
-            st.subheader("Option 1: Upload Data File")
-            uploaded_file = st.file_uploader("Upload your hospital_readmissions.csv file", type=['csv'])
-            if uploaded_file is not None:
-                with st.spinner("Loading uploaded dataset..."):
-                    try:
-                        data = pd.read_csv(uploaded_file)
-                        if data is not None and not data.empty:
-                            # Initialize data processor
-                            processor = DataProcessor()
-                            
-                            # Store in session state
-                            st.session_state.raw_data = data
-                            st.session_state.processor = processor
-                            st.session_state.data_loaded = True
-                            
-                            st.success(f"Dataset uploaded successfully! Shape: {data.shape}")
-                            st.rerun()
-                        else:
-                            st.error("Uploaded file is empty or invalid.")
-                    except Exception as e:
-                        st.error(f"Error loading uploaded file: {e}")
-            
-            # Option 2: Generate Sample Data
-            st.subheader("Option 2: Generate Sample Data")
-            st.info("""
-            **Demo Mode**: Generate synthetic hospital readmission data for demonstration purposes.
-            This is perfect for testing the application without real patient data.
-            """)
-            
-            if st.button("Generate Sample Data"):
-                with st.spinner("Generating sample dataset..."):
-                    try:
-                        from sample_data import generate_sample_data
-                        data = generate_sample_data(1000)
+                        # Set environment variables for Kaggle API
+                        os.environ['KAGGLE_USERNAME'] = kaggle_username
+                        os.environ['KAGGLE_KEY'] = kaggle_key
+                        
+                        # Load dataset
+                        data = load_kaggle_dataset()
                         
                         if data is not None:
                             # Initialize data processor
@@ -166,107 +94,90 @@ if page == "Data Loading & Preprocessing":
                             st.session_state.processor = processor
                             st.session_state.data_loaded = True
                             
-                            st.success(f"Sample dataset generated successfully! Shape: {data.shape}")
+                            st.success("Dataset loaded successfully!")
                             st.rerun()
                         else:
-                            st.error("Failed to generate sample data.")
+                            st.error("Failed to load dataset. Please check your Kaggle credentials and internet connection.")
+                    
                     except Exception as e:
-                        st.error(f"Error generating sample data: {e}")
-            
-            # Option 3: Kaggle API
-            st.subheader("Option 3: Load from Kaggle")
-            st.info("""
-            **Note**: Kaggle API requires authentication and may not work in all deployment environments.
-            For deployment, it's recommended to upload your data file directly or use sample data.
-            """)
-            
-            kaggle_username = st.text_input("Kaggle Username", value=os.getenv("KAGGLE_USERNAME", ""))
-            kaggle_key = st.text_input("Kaggle API Key", value=os.getenv("KAGGLE_KEY", ""), type="password")
-            
-            if st.button("Load from Kaggle"):
-                if kaggle_username and kaggle_key:
-                    with st.spinner("Loading dataset from Kaggle..."):
-                        try:
-                            # Set environment variables for Kaggle API
-                            os.environ['KAGGLE_USERNAME'] = kaggle_username
-                            os.environ['KAGGLE_KEY'] = kaggle_key
-                            
-                            # Load dataset
-                            data = load_kaggle_dataset()
-                            
-                            if data is not None:
-                                # Initialize data processor
-                                processor = DataProcessor()
-                                
-                                # Store in session state
-                                st.session_state.raw_data = data
-                                st.session_state.processor = processor
-                                st.session_state.data_loaded = True
-                                
-                                st.success("Dataset loaded successfully!")
-                                st.rerun()
-                            else:
-                                st.error("Failed to load dataset. Please check your Kaggle credentials and internet connection.")
-                        except Exception as e:
-                            st.error(f"Error loading from Kaggle: {e}")
-                else:
-                    st.error("Please provide both Kaggle username and API key.")
-        
-        # Display data info if loaded
-        if st.session_state.data_loaded and hasattr(st.session_state, 'raw_data'):
-            st.subheader("Dataset Overview")
-            data = st.session_state.raw_data
-            
-            col_info1, col_info2, col_info3 = st.columns(3)
-            with col_info1:
-                st.metric("Total Records", f"{len(data):,}")
-            with col_info2:
-                st.metric("Features", f"{len(data.columns)}")
-            with col_info3:
-                st.metric("Memory Usage", f"{data.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
-            
-            # Show first few rows
-            st.subheader("First 5 Rows")
-            st.dataframe(data.head())
-            
-            # Show data types and missing values
-            col_stats1, col_stats2 = st.columns(2)
-            with col_stats1:
-                st.subheader("Data Types")
-                st.dataframe(data.dtypes.to_frame('Data Type'))
-            with col_stats2:
-                st.subheader("Missing Values")
-                missing_data = data.isnull().sum().to_frame('Missing Count')
-                missing_data['Percentage'] = (missing_data['Missing Count'] / len(data)) * 100
-                st.dataframe(missing_data)
+                        st.error(f"Error loading dataset: {str(e)}")
+            else:
+                st.warning("Please provide both Kaggle username and API key.")
     
     with col2:
-        st.subheader("Data Loading Status")
+        st.subheader("Dataset Statistics")
         if st.session_state.data_loaded:
-            st.success("✅ Data Loaded")
-            st.info("""
-            **Next Steps:**
-            1. Go to "Model Training & Evaluation"
-            2. Train your ML models
-            3. Evaluate performance
-            """)
-        else:
-            st.warning("⚠️ No Data Loaded")
-            st.info("""
-            **To get started:**
-            1. Upload your data file, or
-            2. Provide Kaggle credentials
-            3. Load the dataset
-            """)
+            data = st.session_state.raw_data
+            
+            st.metric("Total Records", f"{len(data):,}")
+            st.metric("Features", f"{len(data.columns)}")
+            
+            # Class distribution
+            if 'readmitted' in data.columns:
+                try:
+                    # Try to convert to numeric first
+                    readmitted_col = data['readmitted'].copy()
+                    if readmitted_col.dtype == 'object':
+                        # Handle string values
+                        readmitted_col = readmitted_col.astype(str).str.lower().str.strip()
+                        readmitted_col = readmitted_col.apply(lambda x: 1 if 'yes' in x else 0)
+                    readmission_rate = readmitted_col.mean()
+                    st.metric("Readmission Rate", f"{readmission_rate:.1%}")
+                except Exception as e:
+                    st.metric("Readmission Rate", "Unable to calculate")
+    
+    # Data preprocessing section
+    if st.session_state.data_loaded:
+        st.subheader("Data Preprocessing")
         
-        # Deployment info
-        st.subheader("Deployment Info")
-        st.info("""
-        **For Production:**
-        - Upload data files directly
-        - Avoid Kaggle API for reliability
-        - Use local data processing
-        """)
+        data = st.session_state.raw_data
+        processor = st.session_state.processor
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Raw Data Sample**")
+            st.dataframe(data.head(), use_container_width=True)
+            
+        with col2:
+            st.write("**Data Quality Issues**")
+            missing_data = data.isnull().sum()
+            missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
+            
+            if len(missing_data) > 0:
+                st.write("Missing values per column:")
+                for col, count in missing_data.items():
+                    st.write(f"- {col}: {count} ({count/len(data):.1%})")
+            else:
+                st.success("No missing values found!")
+        
+        if st.button("Preprocess Data"):
+            with st.spinner("Preprocessing data..."):
+                try:
+                    # Preprocess data
+                    X_train, X_test, y_train, y_test, feature_names = processor.preprocess_data(data)
+                    
+                    # Store in session state
+                    st.session_state.X_train = X_train
+                    st.session_state.X_test = X_test
+                    st.session_state.y_train = y_train
+                    st.session_state.y_test = y_test
+                    st.session_state.feature_names = feature_names
+                    st.session_state.preprocessed = True
+                    
+                    st.success("Data preprocessing completed!")
+                    
+                    # Display preprocessing summary
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Training Samples", f"{len(X_train):,}")
+                    with col2:
+                        st.metric("Test Samples", f"{len(X_test):,}")
+                    with col3:
+                        st.metric("Features", f"{len(feature_names)}")
+                    
+                except Exception as e:
+                    st.error(f"Error during preprocessing: {str(e)}")
 
 # Model Training & Evaluation Page
 elif page == "Model Training & Evaluation":
