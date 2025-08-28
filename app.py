@@ -372,9 +372,18 @@ elif page == "Model Explainability":
             else:
                 mean_shap = np.mean(np.abs(shap_values), axis=0)
             
+            # Ensure arrays are 1-dimensional
+            if len(mean_shap.shape) > 1:
+                mean_shap = mean_shap.flatten()
+            
+            # Ensure feature_names and mean_shap have the same length
+            min_length = min(len(feature_names), len(mean_shap))
+            feature_names_subset = feature_names[:min_length]
+            mean_shap_subset = mean_shap[:min_length]
+            
             importance_df = pd.DataFrame({
-                'Feature': feature_names,
-                'Importance': mean_shap
+                'Feature': feature_names_subset,
+                'Importance': mean_shap_subset
             }).sort_values('Importance', ascending=False).head(15)
             
             fig = px.bar(
@@ -393,21 +402,69 @@ elif page == "Model Explainability":
             # Create SHAP summary plot
             fig, ax = plt.subplots(figsize=(10, 8))
             if SHAP_AVAILABLE and shap is not None:
-                shap.summary_plot(
-                    st.session_state.shap_values,
-                    st.session_state.X_test,
-                    feature_names=feature_names,
-                    show=False,
-                    max_display=15
-                )
+                # Ensure SHAP values and X_test have the same number of rows
+                shap_values = st.session_state.shap_values
+                X_test = st.session_state.X_test
+                
+                # Get the actual SHAP values array
+                if hasattr(shap_values, 'values'):
+                    shap_array = shap_values.values
+                else:
+                    shap_array = shap_values
+                
+                # Ensure both arrays have the same number of samples
+                min_samples = min(len(shap_array), len(X_test))
+                shap_subset = shap_array[:min_samples]
+                X_test_subset = X_test.iloc[:min_samples]
+                
+                try:
+                    shap.summary_plot(
+                        shap_subset,
+                        X_test_subset,
+                        feature_names=feature_names,
+                        show=False,
+                        max_display=15
+                    )
+                except Exception as e:
+                    st.error(f"Error creating SHAP summary plot: {str(e)}")
+                    # Fall back to basic plot
+                    if len(shap_subset.shape) >= 2:
+                        mean_importance = np.mean(np.abs(shap_subset), axis=0)
+                        if len(mean_importance.shape) > 1:
+                            mean_importance = mean_importance.flatten()
+                        
+                        min_length = min(len(feature_names), len(mean_importance))
+                        feature_names_subset = feature_names[:min_length]
+                        mean_importance_subset = mean_importance[:min_length]
+                        
+                        importance_df = pd.DataFrame({
+                            'feature': feature_names_subset,
+                            'importance': mean_importance_subset
+                        }).sort_values('importance', ascending=True).tail(15)
+                        
+                        ax.barh(range(len(importance_df)), importance_df['importance'])
+                        ax.set_yticks(range(len(importance_df)))
+                        ax.set_yticklabels(importance_df['feature'])
+                        ax.set_xlabel('Mean |Feature Importance|')
+                        ax.set_title('Feature Importance Analysis')
             else:
                 # Fallback plot
                 shap_values = st.session_state.shap_values
-                if hasattr(shap_values, 'shape') and len(shap_values.shape) == 2:
+                if hasattr(shap_values, 'shape') and len(shap_values.shape) >= 2:
                     mean_importance = np.mean(np.abs(shap_values), axis=0)
+                    
+                    # Ensure arrays are 1-dimensional
+                    if len(mean_importance.shape) > 1:
+                        mean_importance = mean_importance.flatten()
+                    
+                    # Ensure feature_names and mean_importance have the same length
+                    min_length = min(len(feature_names), len(mean_importance))
+                    feature_names_subset = feature_names[:min_length]
+                    mean_importance_subset = mean_importance[:min_length]
+                    
                     importance_df = pd.DataFrame({
-                        'feature': feature_names[:len(mean_importance)],
-                        'importance': mean_importance
+                        'feature': feature_names_subset,
+                        'importance': mean_importance_subset
                     }).sort_values('importance', ascending=True).tail(15)
                     
                     ax.barh(range(len(importance_df)), importance_df['importance'])
@@ -444,21 +501,47 @@ elif page == "Model Explainability":
             else:
                 sample_shap = st.session_state.shap_values[sample_idx]
             
+            # Ensure sample_shap is 1-dimensional
+            if len(sample_shap.shape) > 1:
+                sample_shap = sample_shap.flatten()
+            
             fig, ax = plt.subplots(figsize=(12, 8))
             
             if SHAP_AVAILABLE and shap is not None:
-                shap.waterfall_plot(
-                    shap.Explanation(
-                        values=sample_shap,
-                        base_values=st.session_state.explainer_obj.expected_value,
-                        data=st.session_state.X_test.iloc[sample_idx].values,
-                        feature_names=feature_names
-                    ),
-                    show=False
-                )
+                try:
+                    # Ensure we have the right data for the selected sample
+                    if sample_idx < len(st.session_state.X_test):
+                        sample_data = st.session_state.X_test.iloc[sample_idx].values
+                        
+                        # Ensure sample_shap and sample_data have compatible dimensions
+                        if len(sample_shap) != len(sample_data):
+                            # Truncate to the smaller length
+                            min_length = min(len(sample_shap), len(sample_data))
+                            sample_shap_truncated = sample_shap[:min_length]
+                            sample_data_truncated = sample_data[:min_length]
+                            feature_names_truncated = feature_names[:min_length]
+                        else:
+                            sample_shap_truncated = sample_shap
+                            sample_data_truncated = sample_data
+                            feature_names_truncated = feature_names
+                        
+                        shap.waterfall_plot(
+                            shap.Explanation(
+                                values=sample_shap_truncated,
+                                base_values=st.session_state.explainer_obj.expected_value,
+                                data=sample_data_truncated,
+                                feature_names=feature_names_truncated
+                            ),
+                            show=False
+                        )
+                    else:
+                        st.error("Selected sample index is out of range")
+                except Exception as e:
+                    st.error(f"Error creating waterfall plot: {str(e)}")
+                    # Fall back to basic bar plot
             else:
                 # Fallback: create basic bar plot
-                sample_values = sample_shap if len(sample_shap.shape) == 1 else sample_shap.flatten()
+                sample_values = sample_shap  # Already flattened above
                 feature_contributions = list(zip(feature_names[:len(sample_values)], sample_values))
                 feature_contributions.sort(key=lambda x: abs(x[1]), reverse=True)
                 
@@ -735,9 +818,18 @@ elif page == "Performance Dashboard":
         else:
             mean_shap = np.mean(np.abs(shap_values), axis=0)
         
+        # Ensure arrays are 1-dimensional
+        if len(mean_shap.shape) > 1:
+            mean_shap = mean_shap.flatten()
+        
+        # Ensure feature_names and mean_shap have the same length
+        min_length = min(len(feature_names), len(mean_shap))
+        feature_names_subset = feature_names[:min_length]
+        mean_shap_subset = mean_shap[:min_length]
+        
         importance_df = pd.DataFrame({
-            'Feature': feature_names,
-            'Importance': mean_shap
+            'Feature': feature_names_subset,
+            'Importance': mean_shap_subset
         }).sort_values('Importance', ascending=False).head(10)
         
         fig = px.bar(
